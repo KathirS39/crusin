@@ -182,7 +182,7 @@ Ride.belongsTo(Rider, { foreignKey: 'riderId', as: 'rider' });
 Driver.hasMany(Ride, { foreignKey: 'driverId', as: 'rides' });
 Ride.belongsTo(Driver, { foreignKey: 'driverId', as: 'driver' });
 
-// ── Auth middleware ───────────────────────────────────────────────────────────
+// Auth middleware
 
 async function authMiddleware(req, res, next) {
   const authHeader = (req.headers.authorization || '').trim();
@@ -217,7 +217,7 @@ async function authMiddleware(req, res, next) {
   }
 }
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ROUTES
 
 app.get('/', (req, res) => {
   res.send('Crusin backend is running!');
@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'Server is running' });
 });
 
-// Riders
+// RIDERS
 // app.use('/riders', authMiddleware);
 
 app.get('/riders', async (req, res) => {
@@ -296,7 +296,7 @@ app.delete('/riders/:id', async (req, res) => {
   }
 });
 
-// Drivers
+// DRIVERS
 // app.use('/drivers', authMiddleware);
 
 app.get('/drivers', async (req, res) => {
@@ -368,7 +368,7 @@ app.delete('/drivers/:id', async (req, res) => {
   }
 });
 
-// Rides
+// RIDES
 // app.use('/rides', authMiddleware);
 
 app.get('/rides', async (req, res) => {
@@ -433,6 +433,40 @@ app.put('/rides/:id', async (req, res) => {
   } catch (err) {
     console.error('Error updating ride:', err);
     res.status(500).json({ error: 'Failed to update ride' });
+  }
+});
+
+app.put('/rides/:id/accept', async (req, res) => {
+  try {
+    const ride = await Ride.findByPk(req.params.id);
+    if (!ride) return res.status(404).json({ error: 'Ride not found' });
+    const { driverId } = req.body;
+    if (!driverId) return res.status(400).json({ error: 'driverId is required' });
+    ride.driverId = driverId;
+    ride.status = 'accepted';
+    await ride.save();
+    res.json(ride);
+  } catch (err) {
+    console.error('Error accepting ride:', err);
+    res.status(500).json({ error: 'Failed to accept ride' });
+  }
+});
+
+app.put('/rides/:id/status', async (req, res) => {
+  const ALLOWED = ['in_progress', 'completed'];
+  try {
+    const ride = await Ride.findByPk(req.params.id);
+    if (!ride) return res.status(404).json({ error: 'Ride not found' });
+    const { status } = req.body;
+    if (!status || !ALLOWED.includes(status)) {
+      return res.status(400).json({ error: `status must be one of: ${ALLOWED.join(', ')}` });
+    }
+    ride.status = status;
+    await ride.save();
+    res.json(ride);
+  } catch (err) {
+    console.error('Error updating ride status:', err);
+    res.status(500).json({ error: 'Failed to update ride status' });
   }
 });
 
