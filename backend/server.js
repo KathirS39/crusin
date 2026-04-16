@@ -373,7 +373,11 @@ app.delete('/drivers/:id', async (req, res) => {
 
 app.get('/rides', async (req, res) => {
   try {
+    const where = {};
+    if (req.query.status) where.status = req.query.status;
+
     const rides = await Ride.findAll({
+      where,
       include: [
         { model: Rider, as: 'rider', attributes: ['riderId', 'firstName', 'lastName'] },
         { model: Driver, as: 'driver', attributes: ['driverId', 'firstName', 'lastName'] },
@@ -384,6 +388,40 @@ app.get('/rides', async (req, res) => {
   } catch (err) {
     console.error('Error fetching rides:', err);
     res.status(500).json({ error: 'Failed to fetch rides' });
+  }
+});
+
+app.get('/rides/rider/:riderId', async (req, res) => {
+  try {
+    const rides = await Ride.findAll({
+      where: { riderId: req.params.riderId },
+      include: [
+        { model: Rider, as: 'rider', attributes: ['riderId', 'firstName', 'lastName'] },
+        { model: Driver, as: 'driver', attributes: ['driverId', 'firstName', 'lastName'] },
+      ],
+      order: [['rideId', 'ASC']],
+    });
+    res.json(rides);
+  } catch (err) {
+    console.error('Error fetching rides for rider:', err);
+    res.status(500).json({ error: 'Failed to fetch rides for rider' });
+  }
+});
+
+app.get('/rides/driver/:driverId', async (req, res) => {
+  try {
+    const rides = await Ride.findAll({
+      where: { driverId: req.params.driverId, status: 'completed' },
+      include: [
+        { model: Rider, as: 'rider', attributes: ['riderId', 'firstName', 'lastName'] },
+        { model: Driver, as: 'driver', attributes: ['driverId', 'firstName', 'lastName'] },
+      ],
+      order: [['rideId', 'ASC']],
+    });
+    res.json(rides);
+  } catch (err) {
+    console.error('Error fetching rides for driver:', err);
+    res.status(500).json({ error: 'Failed to fetch rides for driver' });
   }
 });
 
