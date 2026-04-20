@@ -74,12 +74,12 @@ function AppShell() {
             <SignInButton className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-3 rounded-xl transition-colors text-lg" />
           </div>
         </SignedOut> */}
-        <div className="flex flex-col items-center justify-center h-full py-32 px-4 text-center">
+        {/* <div className="flex flex-col items-center justify-center h-full py-32 px-4 text-center">
           <h1 className="text-5xl font-bold text-white tracking-tight mb-3">Crusin</h1>
           <p className="text-gray-400 text-lg mb-8 max-w-sm">
             Hop in. Let's roll.
           </p>
-        </div>
+        </div> */}
       </main>
 
       <Footer />
