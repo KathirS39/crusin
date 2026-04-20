@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { UserProvider } from './context/UserContext'
 // import { AsgardeoProvider } from '@asgardeo/react'
 
 createRoot(document.getElementById('root')!).render(
@@ -13,7 +14,9 @@ createRoot(document.getElementById('root')!).render(
       afterSignInUrl={window.location.origin}
       afterSignOutUrl={window.location.origin}
     > */}
-      <App />
+      <UserProvider>
+        <App />
+      </UserProvider>
     {/* </AsgardeoProvider> */}
   </StrictMode>,
 )
