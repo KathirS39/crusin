@@ -14,7 +14,7 @@ interface Rider {
 }
 
 export default function RiderProfile() {
-  const { userId: riderId, role, setUser } = useUser()
+  const { userId: riderId, setUser } = useUser()
 
   const [rider, setRider] = useState<Rider | null>(null)
   const [loading, setLoading] = useState(true)
