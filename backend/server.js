@@ -512,7 +512,7 @@ app.get('/rides/:id', async (req, res) => {
 });
 
 app.post('/rides', async (req, res) => {
-  const { riderId, driverId, pickupLocation, dropoffLocation, status, cost } = req.body;
+  const { riderId, driverId, pickupLocation, dropoffLocation, status } = req.body;
 
   const pickup  = typeof pickupLocation  === 'string' ? pickupLocation.trim()  : '';
   const dropoff = typeof dropoffLocation === 'string' ? dropoffLocation.trim() : '';
@@ -521,14 +521,18 @@ app.post('/rides', async (req, res) => {
   if (!pickup)   return res.status(400).json({ error: 'pickupLocation cannot be blank' });
   if (!dropoff)  return res.status(400).json({ error: 'dropoffLocation cannot be blank' });
 
-  if (cost !== undefined && cost !== null) {
-    const costNum = Number(cost);
-    if (isNaN(costNum) || costNum < 0) {
-      return res.status(400).json({ error: 'cost must be a non-negative number' });
-    }
-    if (costNum > 500) {
-      return res.status(400).json({ error: 'cost cannot exceed $500' });
-    }
+  // Calculate real driving cost via Nominatim geocoding + OSRM routing
+  let cost = null;
+  try {
+    const [fromCoords, toCoords] = await Promise.all([
+      geocodeAddress(pickup),
+      geocodeAddress(dropoff),
+    ]);
+    const meters = await getDrivingMeters(fromCoords, toCoords);
+    const miles = meters / 1609.34;
+    cost = (2.50 + 1.75 * miles).toFixed(2);
+  } catch (geoErr) {
+    console.warn('Cost calculation skipped:', geoErr.message);
   }
 
   try {
@@ -619,6 +623,24 @@ app.put('/rides/:id/status', async (req, res) => {
 //     res.status(500).json({ error: 'Failed to delete ride' });
 //   }
 // });
+
+// ── Geocoding + routing helpers ───────────────────────────────────────────────
+
+async function geocodeAddress(address) {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+  const res = await fetch(url, { headers: { 'User-Agent': 'Crusin-RideShare/1.0' } });
+  const data = await res.json();
+  if (!data.length) throw new Error(`Could not geocode: "${address}"`);
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+}
+
+async function getDrivingMeters(from, to) {
+  const url = `http://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=false`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.code !== 'Ok') throw new Error('OSRM could not find a route');
+  return data.routes[0].distance;
+}
 
 // ── AI Recommendations ────────────────────────────────────────────────────────
 

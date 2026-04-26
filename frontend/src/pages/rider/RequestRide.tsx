@@ -1,36 +1,97 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { useUser } from '../../context/UserContext'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined || '').trim() || 'http://localhost:5001'
 
-function calcCost(pickup: string, dropoff: string): number {
-  const base = 5
-  const distance = Math.abs(pickup.length - dropoff.length) + (pickup.length + dropoff.length) / 4
-  return Math.round((base + distance * 0.5) * 100) / 100
+interface NominatimResult {
+  display_name: string
+  lat: string
+  lon: string
 }
 
-interface Suggestion {
+interface AISuggestion {
   name: string
   category: string
   description: string
+}
+
+function LocationInput({ label, value, onChange, placeholder }: {
+  label: string
+  value: string
+  onChange: (val: string) => void
+  placeholder: string
+}) {
+  const [results, setResults] = useState<NominatimResult[]>([])
+  const [open, setOpen] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    onChange(val)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (val.length < 3) { setResults([]); setOpen(false); return }
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=5`
+        )
+        const data: NominatimResult[] = await res.json()
+        setResults(data)
+        setOpen(data.length > 0)
+      } catch { /* ignore network errors */ }
+    }, 400)
+  }
+
+  const select = (name: string) => {
+    onChange(name)
+    setResults([])
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative">
+      <label className="block text-sm text-gray-400 mb-1.5">{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={handleChange}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onFocus={() => results.length > 0 && setOpen(true)}
+        placeholder={placeholder}
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+      />
+      {open && (
+        <ul className="absolute z-50 w-full mt-1 bg-[#0f1c2e] border border-white/10 rounded-xl overflow-hidden shadow-xl">
+          {results.map((r, i) => (
+            <li
+              key={i}
+              onMouseDown={() => select(r.display_name)}
+              className="px-4 py-3 text-sm text-gray-300 hover:bg-white/10 cursor-pointer border-t border-white/5 first:border-t-0 truncate"
+            >
+              {r.display_name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 export default function RequestRide() {
   const { userId: riderId } = useUser()
   const navigate = useNavigate()
 
-  const [pickup, setPickup] = useState('')
+  const [pickup, setPickup]   = useState('')
   const [dropoff, setDropoff] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError]     = useState('')
 
-  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null)
-  const [destination, setDestination] = useState('')
-  const [loadingRecs, setLoadingRecs] = useState(false)
-
-  const estimatedCost = pickup && dropoff ? calcCost(pickup, dropoff) : null
+  const [suggestions, setSuggestions]     = useState<AISuggestion[] | null>(null)
+  const [destination, setDestination]     = useState('')
+  const [actualCost, setActualCost]       = useState<string | null>(null)
+  const [loadingRecs, setLoadingRecs]     = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,45 +103,40 @@ export default function RequestRide() {
     if (!trimmedDropoff) { setError('Dropoff location cannot be empty.'); return }
 
     setLoading(true)
-
     try {
       const rideRes = await axios.post(`${API_BASE}/rides`, {
         riderId,
         pickupLocation: trimmedPickup,
         dropoffLocation: trimmedDropoff,
         status: 'requested',
-        cost: estimatedCost,
       })
 
-      const rideId = (rideRes.data as { rideId: number }).rideId
+      const ride = rideRes.data as { rideId: number; cost: string | null }
       setDestination(trimmedDropoff)
+      setActualCost(ride.cost)
 
-      // Fetch AI recommendations
       setLoadingRecs(true)
       try {
-        const recRes = await axios.post(`${API_BASE}/recommendations`, { rideId })
-        setSuggestions((recRes.data as { suggestions: Suggestion[] }).suggestions)
+        const recRes = await axios.post(`${API_BASE}/recommendations`, { rideId: ride.rideId })
+        setSuggestions((recRes.data as { suggestions: AISuggestion[] }).suggestions)
       } catch (recErr) {
-        const msg = axios.isAxiosError(recErr)
+        console.error('Recommendations failed:', axios.isAxiosError(recErr)
           ? recErr.response?.data?.error || recErr.message
-          : 'Unknown error'
-        console.error('Recommendations failed:', msg)
+          : recErr)
         setSuggestions([])
       } finally {
         setLoadingRecs(false)
       }
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || err.message)
-      } else {
-        setError('Failed to request ride. Please try again.')
-      }
+      setError(axios.isAxiosError(err)
+        ? err.response?.data?.error || err.message
+        : 'Failed to request ride. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  // Success screen with recommendations
+  // ── Success screen ────────────────────────────────────────────────────────
   if (suggestions !== null || loadingRecs) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
@@ -89,7 +145,15 @@ export default function RequestRide() {
             <span className="text-3xl">✓</span>
           </div>
           <h1 className="text-2xl font-bold text-white">Ride Requested!</h1>
-          <p className="text-gray-400 mt-1">Your driver is being matched. Heading to <span className="text-white">{destination}</span>?</p>
+          <p className="text-gray-400 mt-1">
+            Heading to <span className="text-white">{destination}</span>
+          </p>
+          {actualCost && (
+            <div className="inline-flex items-center gap-2 mt-3 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-2">
+              <span className="text-green-400 text-sm">Estimated fare</span>
+              <span className="text-green-400 font-bold text-lg">${actualCost}</span>
+            </div>
+          )}
         </div>
 
         <div className="mb-6">
@@ -131,6 +195,7 @@ export default function RequestRide() {
     )
   }
 
+  // ── Request form ──────────────────────────────────────────────────────────
   return (
     <div className="max-w-xl mx-auto px-4 py-8">
       <div className="mb-8">
@@ -141,36 +206,22 @@ export default function RequestRide() {
 
       <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Pickup Location</label>
-            <input
-              type="text"
-              required
-              value={pickup}
-              onChange={(e) => setPickup(e.target.value)}
-              placeholder="e.g. 2108 Speedway, Austin TX"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
+          <LocationInput
+            label="Pickup Location"
+            value={pickup}
+            onChange={setPickup}
+            placeholder="e.g. 2108 Speedway, Austin TX"
+          />
+          <LocationInput
+            label="Dropoff Location"
+            value={dropoff}
+            onChange={setDropoff}
+            placeholder="e.g. Austin–Bergstrom Airport"
+          />
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1.5">Dropoff Location</label>
-            <input
-              type="text"
-              required
-              value={dropoff}
-              onChange={(e) => setDropoff(e.target.value)}
-              placeholder="e.g. Austin–Bergstrom Airport"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          {estimatedCost !== null && (
-            <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center justify-between">
-              <span className="text-blue-300 text-sm">Estimated cost</span>
-              <span className="text-white font-bold text-lg">${estimatedCost}</span>
-            </div>
-          )}
+          <p className="text-gray-500 text-xs">
+            Fare is calculated from real driving distance ($2.50 base + $1.75/mile).
+          </p>
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
@@ -179,7 +230,7 @@ export default function RequestRide() {
             disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors"
           >
-            {loading ? 'Requesting…' : 'Confirm Ride Request'}
+            {loading ? 'Calculating route…' : 'Confirm Ride Request'}
           </button>
         </form>
       </div>
