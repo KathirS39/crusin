@@ -3,8 +3,17 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import express from 'express';
 import * as jose from 'jose';
+import OpenAI from 'openai';
 
 dotenv.config();
+
+const azureEndpoint = (process.env.AZURE_OPENAI_ENDPOINT || '').replace(/\/?$/, '/');
+const azureClient = new OpenAI({
+  apiKey: process.env.AZURE_OPENAI_KEY,
+  baseURL: `${azureEndpoint}openai/deployments/${process.env.AZURE_OPENAI_DEPLOYMENT}`,
+  defaultQuery: { 'api-version': '2024-12-01-preview' },
+  defaultHeaders: { 'api-key': process.env.AZURE_OPENAI_KEY },
+});
 
 const DB_SCHEMA = process.env.DB_SCHEMA || 'public';
 const useSsl = process.env.PGSSLMODE === 'require';
@@ -64,10 +73,6 @@ const Rider = sequelize.define(
       unique: true,
       allowNull: false,
     },
-    password: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
     phone: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -75,6 +80,37 @@ const Rider = sequelize.define(
     cardNumber: {
       type: DataTypes.STRING,
       allowNull: false,
+      defaultValue: '',
+    },
+    cardExpiry: {
+      type: DataTypes.STRING(5),
+      allowNull: false,
+      defaultValue: '01/00',
+    },
+    cardCvv: {
+      type: DataTypes.CHAR(3),
+      allowNull: false,
+      defaultValue: '000',
+    },
+    billingAddress: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: '',
+    },
+    billingCity: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: '',
+    },
+    billingState: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: '',
+    },
+    billingZip: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: '',
     },
   },
   {
@@ -105,10 +141,6 @@ const Driver = sequelize.define(
     email: {
       type: DataTypes.STRING,
       unique: true,
-      allowNull: false,
-    },
-    password: {
-      type: DataTypes.STRING,
       allowNull: false,
     },
     carMake: {
@@ -228,7 +260,7 @@ app.get('/health', (req, res) => {
 });
 
 // RIDERS
-// app.use('/riders', authMiddleware);
+app.use('/riders', authMiddleware);
 
 app.get('/riders', async (req, res) => {
   try {
@@ -237,6 +269,19 @@ app.get('/riders', async (req, res) => {
   } catch (err) {
     console.error('Error fetching riders:', err);
     res.status(500).json({ error: 'Failed to fetch riders' });
+  }
+});
+
+// Look up a rider by Asgardeo email — used on login to check if user already has an account
+app.get('/riders/lookup', async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ error: 'email query param required' });
+  try {
+    const rider = await Rider.findOne({ where: { email } });
+    if (!rider) return res.status(404).json({ error: 'Rider not found' });
+    res.json(rider);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to lookup rider' });
   }
 });
 
@@ -252,12 +297,20 @@ app.get('/riders/:id', async (req, res) => {
 });
 
 app.post('/riders', async (req, res) => {
-  const { firstName, lastName, email, password, phone, cardNumber } = req.body;
-  if (!firstName || !lastName || !email || !password || !phone || !cardNumber) {
-    return res.status(400).json({ error: 'All fields are required' });
+  const { firstName, lastName, email, phone, cardNumber, cardExpiry, cardCvv, billingAddress, billingCity, billingState, billingZip } = req.body;
+  
+  // Validate required fields
+  const requiredFields = { firstName, lastName, email, phone, cardNumber, cardExpiry, cardCvv, billingAddress, billingCity, billingState, billingZip };
+  const missingFields = Object.entries(requiredFields)
+    .filter(([key, value]) => !value || (typeof value === 'string' && !value.trim()))
+    .map(([key]) => key);
+  
+  if (missingFields.length > 0) {
+    console.warn('Missing or empty fields:', missingFields, 'Received:', requiredFields);
+    return res.status(400).json({ error: 'All fields are required', missingFields });
   }
   try {
-    const rider = await Rider.create({ firstName, lastName, email, password, phone, cardNumber });
+    const rider = await Rider.create({ firstName, lastName, email, phone, cardNumber, cardExpiry, cardCvv, billingAddress, billingCity, billingState, billingZip });
     res.status(201).json(rider);
   } catch (err) {
     console.error('Error creating rider:', err);
@@ -269,13 +322,18 @@ app.put('/riders/:id', async (req, res) => {
   try {
     const rider = await Rider.findByPk(req.params.id);
     if (!rider) return res.status(404).json({ error: 'Rider not found' });
-    const { firstName, lastName, email, password, phone, cardNumber } = req.body;
+    const { firstName, lastName, email, phone, cardNumber, cardExpiry, cardCvv, billingAddress, billingCity, billingState, billingZip } = req.body;
     rider.firstName = firstName ?? rider.firstName;
     rider.lastName = lastName ?? rider.lastName;
     rider.email = email ?? rider.email;
-    rider.password = password ?? rider.password;
     rider.phone = phone ?? rider.phone;
     rider.cardNumber = cardNumber ?? rider.cardNumber;
+    rider.cardExpiry = cardExpiry ?? rider.cardExpiry;
+    rider.cardCvv = cardCvv ?? rider.cardCvv;
+    rider.billingAddress = billingAddress ?? rider.billingAddress;
+    rider.billingCity = billingCity ?? rider.billingCity;
+    rider.billingState = billingState ?? rider.billingState;
+    rider.billingZip = billingZip ?? rider.billingZip;
     await rider.save();
     res.json(rider);
   } catch (err) {
@@ -297,7 +355,7 @@ app.delete('/riders/:id', async (req, res) => {
 });
 
 // DRIVERS
-// app.use('/drivers', authMiddleware);
+app.use('/drivers', authMiddleware);
 
 app.get('/drivers', async (req, res) => {
   try {
@@ -306,6 +364,19 @@ app.get('/drivers', async (req, res) => {
   } catch (err) {
     console.error('Error fetching drivers:', err);
     res.status(500).json({ error: 'Failed to fetch drivers' });
+  }
+});
+
+// Look up a driver by Asgardeo email — used on login to check if user already has an account
+app.get('/drivers/lookup', async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ error: 'email query param required' });
+  try {
+    const driver = await Driver.findOne({ where: { email } });
+    if (!driver) return res.status(404).json({ error: 'Driver not found' });
+    res.json(driver);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to lookup driver' });
   }
 });
 
@@ -321,12 +392,12 @@ app.get('/drivers/:id', async (req, res) => {
 });
 
 app.post('/drivers', async (req, res) => {
-  const { firstName, lastName, email, password, carMake, carModel, carColor, licensePlate, rating } = req.body;
-  if (!firstName || !lastName || !email || !password || !carMake || !carModel || !carColor || !licensePlate) {
+  const { firstName, lastName, email, carMake, carModel, carColor, licensePlate } = req.body;
+  if (!firstName || !lastName || !email || !carMake || !carModel || !carColor || !licensePlate) {
     return res.status(400).json({ error: 'All fields are required' });
   }
   try {
-    const driver = await Driver.create({ firstName, lastName, email, password, carMake, carModel, carColor, licensePlate, rating });
+    const driver = await Driver.create({ firstName, lastName, email, carMake, carModel, carColor, licensePlate });
     res.status(201).json(driver);
   } catch (err) {
     console.error('Error creating driver:', err);
@@ -338,11 +409,10 @@ app.put('/drivers/:id', async (req, res) => {
   try {
     const driver = await Driver.findByPk(req.params.id);
     if (!driver) return res.status(404).json({ error: 'Driver not found' });
-    const { firstName, lastName, email, password, carMake, carModel, carColor, licensePlate, rating } = req.body;
+    const { firstName, lastName, email, carMake, carModel, carColor, licensePlate, rating } = req.body;
     driver.firstName = firstName ?? driver.firstName;
     driver.lastName = lastName ?? driver.lastName;
     driver.email = email ?? driver.email;
-    driver.password = password ?? driver.password;
     driver.carMake = carMake ?? driver.carMake;
     driver.carModel = carModel ?? driver.carModel;
     driver.carColor = carColor ?? driver.carColor;
@@ -369,7 +439,7 @@ app.delete('/drivers/:id', async (req, res) => {
 });
 
 // RIDES
-// app.use('/rides', authMiddleware);
+app.use('/rides', authMiddleware);
 
 app.get('/rides', async (req, res) => {
   try {
@@ -443,11 +513,26 @@ app.get('/rides/:id', async (req, res) => {
 
 app.post('/rides', async (req, res) => {
   const { riderId, driverId, pickupLocation, dropoffLocation, status, cost } = req.body;
-  if (!riderId || !pickupLocation || !dropoffLocation) {
-    return res.status(400).json({ error: 'riderId, pickupLocation, and dropoffLocation are required' });
+
+  const pickup  = typeof pickupLocation  === 'string' ? pickupLocation.trim()  : '';
+  const dropoff = typeof dropoffLocation === 'string' ? dropoffLocation.trim() : '';
+
+  if (!riderId)  return res.status(400).json({ error: 'riderId is required' });
+  if (!pickup)   return res.status(400).json({ error: 'pickupLocation cannot be blank' });
+  if (!dropoff)  return res.status(400).json({ error: 'dropoffLocation cannot be blank' });
+
+  if (cost !== undefined && cost !== null) {
+    const costNum = Number(cost);
+    if (isNaN(costNum) || costNum < 0) {
+      return res.status(400).json({ error: 'cost must be a non-negative number' });
+    }
+    if (costNum > 500) {
+      return res.status(400).json({ error: 'cost cannot exceed $500' });
+    }
   }
+
   try {
-    const ride = await Ride.create({ riderId, driverId, pickupLocation, dropoffLocation, status, cost });
+    const ride = await Ride.create({ riderId, driverId, pickupLocation: pickup, dropoffLocation: dropoff, status, cost });
     res.status(201).json(ride);
   } catch (err) {
     console.error('Error creating ride:', err);
@@ -460,8 +545,13 @@ app.put('/rides/:id', async (req, res) => {
     const ride = await Ride.findByPk(req.params.id);
     if (!ride) return res.status(404).json({ error: 'Ride not found' });
     const { riderId, driverId, pickupLocation, dropoffLocation, status, cost } = req.body;
+
+    // Driver assignment is only allowed through PUT /rides/:id/accept
+    if (driverId !== undefined && driverId !== ride.driverId) {
+      return res.status(403).json({ error: 'Driver assignment cannot be changed here. Use PUT /rides/:id/accept.' });
+    }
+
     ride.riderId = riderId ?? ride.riderId;
-    ride.driverId = driverId ?? ride.driverId;
     ride.pickupLocation = pickupLocation ?? ride.pickupLocation;
     ride.dropoffLocation = dropoffLocation ?? ride.dropoffLocation;
     ride.status = status ?? ride.status;
@@ -478,6 +568,7 @@ app.put('/rides/:id/accept', async (req, res) => {
   try {
     const ride = await Ride.findByPk(req.params.id);
     if (!ride) return res.status(404).json({ error: 'Ride not found' });
+    if (ride.status !== 'requested') return res.status(409).json({ error: 'Ride is no longer available' });
     const { driverId } = req.body;
     if (!driverId) return res.status(400).json({ error: 'driverId is required' });
     ride.driverId = driverId;
@@ -499,6 +590,15 @@ app.put('/rides/:id/status', async (req, res) => {
     if (!status || !ALLOWED.includes(status)) {
       return res.status(400).json({ error: `status must be one of: ${ALLOWED.join(', ')}` });
     }
+    // A driver may only have one ride in_progress at a time
+    if (status === 'in_progress' && ride.driverId) {
+      const active = await Ride.findOne({
+        where: { driverId: ride.driverId, status: 'in_progress' },
+      });
+      if (active) {
+        return res.status(409).json({ error: 'You already have a ride in progress. Complete it before starting another.' });
+      }
+    }
     ride.status = status;
     await ride.save();
     res.json(ride);
@@ -508,15 +608,54 @@ app.put('/rides/:id/status', async (req, res) => {
   }
 });
 
-app.delete('/rides/:id', async (req, res) => {
+// app.delete('/rides/:id', async (req, res) => {
+//   try {
+//     const ride = await Ride.findByPk(req.params.id);
+//     if (!ride) return res.status(404).json({ error: 'Ride not found' });
+//     await ride.destroy();
+//     res.json({ message: 'Ride deleted successfully' });
+//   } catch (err) {
+//     console.error('Error deleting ride:', err);
+//     res.status(500).json({ error: 'Failed to delete ride' });
+//   }
+// });
+
+// ── AI Recommendations ────────────────────────────────────────────────────────
+
+app.post('/recommendations', authMiddleware, async (req, res) => {
+  const { rideId } = req.body;
+  if (!rideId) return res.status(400).json({ error: 'rideId is required' });
+
   try {
-    const ride = await Ride.findByPk(req.params.id);
+    const ride = await Ride.findByPk(rideId);
     if (!ride) return res.status(404).json({ error: 'Ride not found' });
-    await ride.destroy();
-    res.json({ message: 'Ride deleted successfully' });
+
+    const destination = ride.dropoffLocation;
+
+    const completion = await azureClient.chat.completions.create({
+      model: process.env.AZURE_OPENAI_DEPLOYMENT,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a local recommendations assistant for a rideshare app. Always respond with valid JSON only — no markdown, no extra text. Only suggest real, well-known establishments that actually exist near the given location.',
+        },
+        {
+          role: 'user',
+          content: `A user is being dropped off at "${destination}" (picked up from "${ride.pickupLocation}"). Suggest 3 real, well-known nearby spots they might enjoy — consider the neighborhood, time of day, and what is actually close to that specific address or landmark. Return a JSON array of exactly 3 objects, each with: "name" (string), "category" (string), "description" (one sentence, max 20 words).`,
+        },
+      ],
+      max_tokens: 400,
+      temperature: 0.7,
+    });
+
+    let raw = completion.choices[0].message.content?.trim() || '[]';
+    // Strip markdown code fences if the model wraps the response
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const suggestions = JSON.parse(raw);
+    res.json({ destination, suggestions });
   } catch (err) {
-    console.error('Error deleting ride:', err);
-    res.status(500).json({ error: 'Failed to delete ride' });
+    console.error('Recommendations error:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate recommendations' });
   }
 });
 

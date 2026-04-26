@@ -24,6 +24,7 @@ export default function PendingRides() {
 
   // Edit state
   const [editId, setEditId] = useState<number | null>(null)
+  const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null)
   const [editPickup, setEditPickup] = useState('')
   const [editDropoff, setEditDropoff] = useState('')
   const [saving, setSaving] = useState(false)
@@ -165,18 +166,38 @@ export default function PendingRides() {
                   {/* Actions only for 'requested' rides */}
                   {ride.status === 'requested' && (
                     <div className="flex gap-2 shrink-0">
-                      <button
-                        onClick={() => startEdit(ride)}
-                        className="bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => void cancelRide(ride.rideId)}
-                        className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        Cancel
-                      </button>
+                      {confirmCancelId === ride.rideId ? (
+                        <>
+                          <span className="text-gray-400 text-sm self-center">Cancel this ride?</span>
+                          <button
+                            onClick={() => { void cancelRide(ride.rideId); setConfirmCancelId(null) }}
+                            className="bg-red-600 hover:bg-red-500 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Yes, cancel
+                          </button>
+                          <button
+                            onClick={() => setConfirmCancelId(null)}
+                            className="bg-white/5 hover:bg-white/10 text-gray-300 text-sm px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Keep
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => startEdit(ride)}
+                            className="bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => setConfirmCancelId(ride.rideId)}
+                            className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

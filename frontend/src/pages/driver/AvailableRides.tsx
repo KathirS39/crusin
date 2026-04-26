@@ -34,6 +34,8 @@ export default function AvailableRides() {
   useEffect(() => { fetchRides() }, [])
 
   const acceptRide = async (rideId: number) => {
+    if (!driverId) { setError('Driver session not found. Please sign out and sign back in.'); return }
+    setError('')
     setAccepting(rideId)
     try {
       await axios.put(`${API_BASE}/rides/${rideId}/accept`, { driverId })

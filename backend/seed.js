@@ -28,6 +28,12 @@ const Rider = sequelize.define('Rider', {
   password: { type: DataTypes.STRING, allowNull: false },
   phone: { type: DataTypes.STRING, allowNull: false },
   cardNumber: { type: DataTypes.STRING, allowNull: false },
+  cardExpiry: { type: DataTypes.STRING, allowNull: false },
+  cardCvv: { type: DataTypes.STRING, allowNull: false },
+  billingAddress: { type: DataTypes.STRING, allowNull: false },
+  billingCity: { type: DataTypes.STRING, allowNull: false },
+  billingState: { type: DataTypes.STRING, allowNull: false },
+  billingZip: { type: DataTypes.STRING, allowNull: false },
 }, { schema: DB_SCHEMA, tableName: 'riders', underscored: true, timestamps: false });
 
 const Driver = sequelize.define('Driver', {
@@ -64,13 +70,19 @@ async function seed() {
   await sequelize.authenticate();
   console.log('Connected to database.');
 
+  // Clear existing data (rides first due to foreign keys)
+  await Ride.destroy({ where: {} });
+  await Rider.destroy({ where: {} });
+  await Driver.destroy({ where: {} });
+  console.log('Cleared existing data.');
+
   // Riders
   const riders = await Rider.bulkCreate([
-    { firstName: 'Alice',   lastName: 'Johnson',  email: 'alice@example.com',   password: 'hashed_pw_1', phone: '512-555-0101', cardNumber: '4111111111111111' },
-    { firstName: 'Bob',     lastName: 'Martinez', email: 'bob@example.com',     password: 'hashed_pw_2', phone: '512-555-0102', cardNumber: '4111111111112222' },
-    { firstName: 'Carol',   lastName: 'Smith',    email: 'carol@example.com',   password: 'hashed_pw_3', phone: '512-555-0103', cardNumber: '4111111111113333' },
-    { firstName: 'David',   lastName: 'Lee',      email: 'david@example.com',   password: 'hashed_pw_4', phone: '512-555-0104', cardNumber: '4111111111114444' },
-    { firstName: 'Emma',    lastName: 'Wilson',   email: 'emma@example.com',    password: 'hashed_pw_5', phone: '512-555-0105', cardNumber: '4111111111115555' },
+    { firstName: 'Alice',   lastName: 'Johnson',  email: 'alice@example.com',   password: 'hashed_pw_1', phone: '512-555-0101', cardNumber: '4111111111111111', cardExpiry: '09/27', cardCvv: '123', billingAddress: '2108 Speedway',        billingCity: 'Austin', billingState: 'TX', billingZip: '78712' },
+    { firstName: 'Bob',     lastName: 'Martinez', email: 'bob@example.com',     password: 'hashed_pw_2', phone: '512-555-0102', cardNumber: '4111111111112222', cardExpiry: '03/26', cardCvv: '456', billingAddress: '1801 Lavaca St',       billingCity: 'Austin', billingState: 'TX', billingZip: '78701' },
+    { firstName: 'Carol',   lastName: 'Smith',    email: 'carol@example.com',   password: 'hashed_pw_3', phone: '512-555-0103', cardNumber: '4111111111113333', cardExpiry: '11/28', cardCvv: '789', billingAddress: '500 W 2nd St',         billingCity: 'Austin', billingState: 'TX', billingZip: '78701' },
+    { firstName: 'David',   lastName: 'Lee',      email: 'david@example.com',   password: 'hashed_pw_4', phone: '512-555-0104', cardNumber: '4111111111114444', cardExpiry: '06/26', cardCvv: '321', billingAddress: '3001 S Lamar Blvd',    billingCity: 'Austin', billingState: 'TX', billingZip: '78704' },
+    { firstName: 'Emma',    lastName: 'Wilson',   email: 'emma@example.com',    password: 'hashed_pw_5', phone: '512-555-0105', cardNumber: '4111111111115555', cardExpiry: '01/29', cardCvv: '654', billingAddress: '11501 Domain Dr',      billingCity: 'Austin', billingState: 'TX', billingZip: '78758' },
   ], { returning: true });
   console.log(`Inserted ${riders.length} riders.`);
 

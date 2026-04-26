@@ -152,12 +152,22 @@ export default function MyRides() {
 
           {/* Completed rides */}
           <section>
-            <h2 className="text-lg font-semibold text-white mb-4">
-              Completed Rides
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">
+                Completed Rides
+                {completedRides.length > 0 && (
+                  <span className="ml-2 text-sm font-normal text-gray-400">{completedRides.length}</span>
+                )}
+              </h2>
               {completedRides.length > 0 && (
-                <span className="ml-2 text-sm font-normal text-gray-400">{completedRides.length}</span>
+                <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-2 flex items-center gap-2">
+                  <span className="text-green-400 text-sm">Total Earnings</span>
+                  <span className="text-green-400 font-bold text-lg">
+                    ${completedRides.reduce((sum, r) => sum + (r.cost ? parseFloat(r.cost) : 0), 0).toFixed(2)}
+                  </span>
+                </div>
               )}
-            </h2>
+            </div>
 
             {completedRides.length === 0 ? (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">

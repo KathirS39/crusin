@@ -51,10 +51,15 @@ export default function DriverDashboard() {
     void fetchData()
   }, [driverId])
 
+  const totalEarnings = completed
+    .reduce((sum, r) => sum + (r.cost ? parseFloat(r.cost) : 0), 0)
+    .toFixed(2)
+
   const stats = [
     { label: 'Available Rides', value: available.length },
     { label: 'My Active Rides', value: myRides.length },
     { label: 'Completed', value: completed.length },
+    { label: 'Total Earnings', value: `$${totalEarnings}`, green: true },
   ]
 
   const quickActions = [
@@ -73,11 +78,11 @@ export default function DriverDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {stats.map((stat) => (
           <div key={stat.label} className="bg-white/5 border border-white/10 rounded-2xl p-5">
             <p className="text-gray-400 text-sm mb-1">{stat.label}</p>
-            <p className="text-3xl font-bold text-white">
+            <p className={`text-3xl font-bold ${stat.green ? 'text-green-400' : 'text-white'}`}>
               {loading ? '—' : stat.value}
             </p>
           </div>
