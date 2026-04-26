@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { SignedIn, SignedOut, SignInButton, SignOutButton, SignUpButton, useAsgardeo } from '@asgardeo/react'
+import { SignedIn, SignedOut, SignInButton, SignUpButton, useAsgardeo } from '@asgardeo/react'
 import axios from 'axios'
 import { useUser } from './context/UserContext'
 import Header from './components/Header'
