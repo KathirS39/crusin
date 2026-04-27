@@ -23,6 +23,7 @@ const PORT = process.env.PORT || 5001;
 
 const ASGARDEO_ORG = process.env.ASGARDEO_ORG || 'fullstack39';
 const JWKS_URI = `https://api.asgardeo.io/t/${ASGARDEO_ORG}/oauth2/jwks`;
+const USERINFO_URI = `https://api.asgardeo.io/t/${ASGARDEO_ORG}/oauth2/userinfo`;
 
 app.use(cors());
 app.use(express.json());
@@ -239,6 +240,16 @@ async function authMiddleware(req, res, next) {
     const JWKS = jose.createRemoteJWKSet(new URL(JWKS_URI));
     const { payload } = await jose.jwtVerify(token, JWKS);
     req.userId = payload.sub;
+    req.userEmail = payload.email || payload.username || null;
+
+    if (!req.userEmail) {
+      const uiRes = await fetch(USERINFO_URI, { headers: { Authorization: `Bearer ${token}` } });
+      if (uiRes.ok) {
+        const ui = await uiRes.json();
+        req.userEmail = ui.email || ui.username || null;
+      }
+    }
+
     return next();
   } catch (err) {
     console.error('JWT verification failed:', err.message);
@@ -322,6 +333,7 @@ app.put('/riders/:id', async (req, res) => {
   try {
     const rider = await Rider.findByPk(req.params.id);
     if (!rider) return res.status(404).json({ error: 'Rider not found' });
+    if (rider.email !== req.userEmail) return res.status(403).json({ error: 'Forbidden: you can only update your own profile' });
     const { firstName, lastName, email, phone, cardNumber, cardExpiry, cardCvv, billingAddress, billingCity, billingState, billingZip } = req.body;
     rider.firstName = firstName ?? rider.firstName;
     rider.lastName = lastName ?? rider.lastName;
@@ -346,6 +358,7 @@ app.delete('/riders/:id', async (req, res) => {
   try {
     const rider = await Rider.findByPk(req.params.id);
     if (!rider) return res.status(404).json({ error: 'Rider not found' });
+    if (rider.email !== req.userEmail) return res.status(403).json({ error: 'Forbidden: you can only delete your own profile' });
     await rider.destroy();
     res.json({ message: 'Rider deleted successfully' });
   } catch (err) {
@@ -409,6 +422,7 @@ app.put('/drivers/:id', async (req, res) => {
   try {
     const driver = await Driver.findByPk(req.params.id);
     if (!driver) return res.status(404).json({ error: 'Driver not found' });
+    if (driver.email !== req.userEmail) return res.status(403).json({ error: 'Forbidden: you can only update your own profile' });
     const { firstName, lastName, email, carMake, carModel, carColor, licensePlate, rating } = req.body;
     driver.firstName = firstName ?? driver.firstName;
     driver.lastName = lastName ?? driver.lastName;
@@ -430,6 +444,7 @@ app.delete('/drivers/:id', async (req, res) => {
   try {
     const driver = await Driver.findByPk(req.params.id);
     if (!driver) return res.status(404).json({ error: 'Driver not found' });
+    if (driver.email !== req.userEmail) return res.status(403).json({ error: 'Forbidden: you can only delete your own profile' });
     await driver.destroy();
     res.json({ message: 'Driver deleted successfully' });
   } catch (err) {
@@ -463,6 +478,8 @@ app.get('/rides', async (req, res) => {
 
 app.get('/rides/rider/:riderId', async (req, res) => {
   try {
+    const rider = await Rider.findByPk(req.params.riderId);
+    if (!rider || rider.email !== req.userEmail) return res.status(403).json({ error: 'Forbidden: you can only view your own rides' });
     const rides = await Ride.findAll({
       where: { riderId: req.params.riderId },
       include: [
@@ -480,6 +497,8 @@ app.get('/rides/rider/:riderId', async (req, res) => {
 
 app.get('/rides/driver/:driverId', async (req, res) => {
   try {
+    const driver = await Driver.findByPk(req.params.driverId);
+    if (!driver || driver.email !== req.userEmail) return res.status(403).json({ error: 'Forbidden: you can only view your own rides' });
     const rides = await Ride.findAll({
       where: { driverId: req.params.driverId, status: 'completed' },
       include: [
@@ -520,6 +539,11 @@ app.post('/rides', async (req, res) => {
   if (!riderId)  return res.status(400).json({ error: 'riderId is required' });
   if (!pickup)   return res.status(400).json({ error: 'pickupLocation cannot be blank' });
   if (!dropoff)  return res.status(400).json({ error: 'dropoffLocation cannot be blank' });
+
+  const requestingRider = await Rider.findByPk(riderId);
+  if (!requestingRider || requestingRider.email !== req.userEmail) {
+    return res.status(403).json({ error: 'Forbidden: you can only create rides for yourself' });
+  }
 
   // Calculate real driving cost via Nominatim geocoding + OSRM routing
   let cost = null;
@@ -590,6 +614,10 @@ app.put('/rides/:id/status', async (req, res) => {
   try {
     const ride = await Ride.findByPk(req.params.id);
     if (!ride) return res.status(404).json({ error: 'Ride not found' });
+    const assignedDriver = ride.driverId ? await Driver.findByPk(ride.driverId) : null;
+    if (!assignedDriver || assignedDriver.email !== req.userEmail) {
+      return res.status(403).json({ error: 'Forbidden: only the assigned driver can update ride status' });
+    }
     const { status } = req.body;
     if (!status || !ALLOWED.includes(status)) {
       return res.status(400).json({ error: `status must be one of: ${ALLOWED.join(', ')}` });
