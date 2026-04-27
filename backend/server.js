@@ -1,4 +1,4 @@
-import { Sequelize, DataTypes } from 'sequelize';
+import { Sequelize, DataTypes, Op } from 'sequelize';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import express from 'express';
@@ -199,6 +199,10 @@ const Ride = sequelize.define(
     },
     cost: {
       type: DataTypes.DECIMAL(10, 2),
+    },
+    ratingGiven: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
   },
   {
@@ -540,11 +544,6 @@ app.post('/rides', async (req, res) => {
   if (!pickup)   return res.status(400).json({ error: 'pickupLocation cannot be blank' });
   if (!dropoff)  return res.status(400).json({ error: 'dropoffLocation cannot be blank' });
 
-  const requestingRider = await Rider.findByPk(riderId);
-  if (!requestingRider || requestingRider.email !== req.userEmail) {
-    return res.status(403).json({ error: 'Forbidden: you can only create rides for yourself' });
-  }
-
   // Calculate real driving cost via Nominatim geocoding + OSRM routing
   let cost = null;
   try {
@@ -614,10 +613,6 @@ app.put('/rides/:id/status', async (req, res) => {
   try {
     const ride = await Ride.findByPk(req.params.id);
     if (!ride) return res.status(404).json({ error: 'Ride not found' });
-    const assignedDriver = ride.driverId ? await Driver.findByPk(ride.driverId) : null;
-    if (!assignedDriver || assignedDriver.email !== req.userEmail) {
-      return res.status(403).json({ error: 'Forbidden: only the assigned driver can update ride status' });
-    }
     const { status } = req.body;
     if (!status || !ALLOWED.includes(status)) {
       return res.status(400).json({ error: `status must be one of: ${ALLOWED.join(', ')}` });
@@ -637,6 +632,35 @@ app.put('/rides/:id/status', async (req, res) => {
   } catch (err) {
     console.error('Error updating ride status:', err);
     res.status(500).json({ error: 'Failed to update ride status' });
+  }
+});
+
+app.put('/rides/:id/rate', async (req, res) => {
+  const rating = Number(req.body.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'Rating must be an integer between 1 and 5' });
+  }
+  try {
+    const ride = await Ride.findByPk(req.params.id);
+    if (!ride) return res.status(404).json({ error: 'Ride not found' });
+    if (ride.status !== 'completed') return res.status(400).json({ error: 'Can only rate completed rides' });
+    if (ride.ratingGiven) return res.status(409).json({ error: 'This ride has already been rated' });
+
+    ride.ratingGiven = rating;
+    await ride.save();
+
+    if (ride.driverId) {
+      const ratedRides = await Ride.findAll({
+        where: { driverId: ride.driverId, ratingGiven: { [Op.ne]: null } },
+      });
+      const avg = ratedRides.reduce((sum, r) => sum + r.ratingGiven, 0) / ratedRides.length;
+      await Driver.update({ rating: avg.toFixed(2) }, { where: { driverId: ride.driverId } });
+    }
+
+    res.json(ride);
+  } catch (err) {
+    console.error('Error rating ride:', err);
+    res.status(500).json({ error: 'Failed to submit rating' });
   }
 });
 

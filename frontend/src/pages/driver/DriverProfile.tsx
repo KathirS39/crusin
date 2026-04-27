@@ -108,7 +108,7 @@ export default function DriverProfile() {
             <ProfileField label="Car Model" value={driver?.carModel} />
             <ProfileField label="Car Color" value={driver?.carColor} />
             <ProfileField label="License Plate" value={driver?.licensePlate} />
-            <ProfileField label="Rating" value={driver?.rating ? `${driver.rating} / 5.00` : undefined} />
+            <RatingDisplay rating={driver?.rating} />
 
             <button
               onClick={() => setEditing(true)}
@@ -210,6 +210,38 @@ function ProfileField({ label, value }: { label: string; value?: string }) {
     <div className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
       <span className="text-gray-400 text-sm">{label}</span>
       <span className="text-white text-sm font-medium">{value || '—'}</span>
+    </div>
+  )
+}
+
+function RatingDisplay({ rating }: { rating?: string }) {
+  const value = parseFloat(rating || '0') || 0
+  const full = Math.floor(value)
+  const half = value - full >= 0.5
+
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
+      <span className="text-gray-400 text-sm">Rating</span>
+      <div className="flex items-center gap-2">
+        <div className="flex gap-0.5">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <span
+              key={star}
+              className={`text-lg leading-none ${
+                star <= full
+                  ? 'text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]'
+                  : star === full + 1 && half
+                  ? 'text-yellow-400/50'
+                  : 'text-gray-700'
+              }`}
+            >
+              ★
+            </span>
+          ))}
+        </div>
+        <span className="text-white text-sm font-semibold">{value.toFixed(2)}</span>
+        <span className="text-gray-500 text-xs">/ 5.00</span>
+      </div>
     </div>
   )
 }
