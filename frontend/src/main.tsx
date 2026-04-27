@@ -11,8 +11,8 @@ createRoot(document.getElementById('root')!).render(
       clientId={(import.meta.env.VITE_ASGARDEO_CLIENT_ID as string | undefined) || 'RKiwf5Uj5pSjcRcHQ_a0B75Q6pUa'}
       baseUrl="https://api.asgardeo.io/t/fullstack39"
       scopes={['openid', 'profile', 'email']}
-      afterSignInUrl="https://crusin-1.onrender.com"
-      afterSignOutUrl="https://crusin-1.onrender.com"
+      afterSignInUrl="https://crusin-1.onrender.com/"
+      afterSignOutUrl="https://crusin-1.onrender.com/"
     >
       <UserProvider>
         <App />
